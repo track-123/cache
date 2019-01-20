@@ -1,0 +1,53 @@
+堆内缓存：使用java的堆内存来缓存对象。
+	优点：没有序列化和反序列化的操作，速度较快。
+	缺点：缓存可以使用的空间有限；缓存的数据量较大时会导致JVM的GC，并且GC操作的时间会变长。
+堆外缓存：缓存的对象存储在堆外内存中。
+	相比于堆内缓存的优点是：可用的存储空间变大了（受限于服务器的内存大小）；缓存对象转移到了堆外可以减少GC的频率和时间（GC需要扫描和移动的对象变少了）。
+	缺点：对象的存储和使用时要进行序列化和反序列化。
+
+以上两者在JVM重启时数据都会丢失，需要重新加载
+磁盘缓存：缓存数据存储在磁盘上，JVM或者服务器重启不会影响数据。
+分布式缓存：进程内缓存和磁盘缓存，在多JVM的场景下会有两个问题：
+1.单机缓存的容量问题。
+2.数据一致性问题（多JVM缓存的数据可能会不一致）。
+3.因为缓存不能被多个JVM实例共享，缓存不命中的情况下，需要回源到DB加载数据的访问量会变多。
+
+缓存的使用：
+	1.单机时：缓存最热点的数据到堆内缓存，相对热的数据到堆外缓存，不热的数据到磁盘缓存。
+	2.集群时：缓存最热点的数据到堆内缓存，相对热的数据到堆外缓存，全量数据到分布式缓存。
+	配图
+	
+guava的常用参数：
+maximumSize 最大条目数。
+expireAfterAccess TTI
+expireAfterWrite  TTL
+refreshAfterWrite
+concurrencyLevel
+maximumWeight
+weakKeys/weakValues
+softValues
+removalListener
+
+recordStats
+
+缓存的失败统计，延迟报警，命中率
+
+缓存的使用模式：Cache-Aside，Cache-As-SoR（system of record）
+Cache-Aside：即业务代码围绕着cache写，有业务代码直接维护缓存
+读场景：先从缓存中获取数据，如果没有命中，则回源到SoR并将数据源放入缓存供下次读取使用。
+写场景：1.同步写：先将数据写入SoR，成功后同步写入缓存。
+		2.先将数据写入SoR，并且失效缓存数据，下次读取时从SoR加载。
+适合使用AOP实现。
+
+Cache-As-SoR：所有的操作都只对cache进行，然后cache在委托给SoR进行真实的读写。即业务中只看到cache的操作，看不到SoR的操作。
+Read-Through：读取数据时，业务代码首先调用cache，如果没有命中，由cache回源到SoR。
+	优点：应用代码简洁清晰，不会存在查询缓存和回源SoR代码交织的情况。也可以消除重复的代码。
+	解决Dog-pile effect，即当某个缓存失效时，有大量相同的请求没有命中缓存，从而都回源到SoR，导致后端压力变大。这个时候可以限定一个请求去哪数据。
+	guava cache支持，可以通过两种方式，1.初始化时，配置CacheLoader。2.使用get(K key, Callable<? extends V> valueLoader).
+Write-Through：穿透写模式/直写模式（同步写）。业务代码调用cache写（增/改/删）数据，然后有cache负责写SoR。guava cache没有提供支持。
+Write-behind: 回写模式。Write-Through时同步写，Write-behind是异步写SoR。异步写的好处：批量写，合并写，延时，限流。
+
+
+copy pattern：读时复制，写时复制。Java的对内缓存都是基于引用的，如果有人拿到缓存数据并修改了它，有可能会引发事故，切排查困难。
+
+
